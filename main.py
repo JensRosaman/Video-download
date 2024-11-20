@@ -1,15 +1,15 @@
 import json
+from re import sub
 import subprocess
-import time
+from time import sleep
 import os
+from sys import argv
 
-import pyperclip
 from bs4 import BeautifulSoup
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
-from mitmproxy import io
-from mitmproxy.http import HTTPFlow
+
 import requests
 
 # Create a function to filter and find .m3u8 links
@@ -47,7 +47,7 @@ def setup_selenium():
     # Enable Performance Logging
     options.set_capability("goog:loggingPrefs", {'performance': 'ALL'})
     # Set up the Chrome WebDriver
-    service = Service(executable_path=r"C:\Users\Oliver\Downloads\chromedriver-win64\chromedriver.exe")  # Replace with the path to your chromedriver
+    service = Service(executable_path=rf"C:\Users\{os.getlogin()}\Downloads\chromedriver-win64\chromedriver.exe")  # Replace with the path to your chromedriver
     driver = webdriver.Chrome(service=service, options=options)
 
     return driver
@@ -55,14 +55,14 @@ def setup_selenium():
 
 # Main logic to scrape the website
 def scrape_website(url):
-    time.sleep(3)
+    sleep(3)
     # Set up Selenium
     driver = setup_selenium()
     try:
         # Open the website
         driver.get(url)
         # Wait for the page to load (you can adjust this)
-        time.sleep(3)
+        sleep(3)
         # Capture network traffic logs
         logs = driver.get_log("performance")
         # Find the m3u8 link in the logs
@@ -72,7 +72,9 @@ def scrape_website(url):
 
         soup = BeautifulSoup(driver.page_source, "html.parser")
         video_tags = soup.find_all("video")
-        filnamn = soup.find("title").get_text()[:5] + ".mp4"
+        filnamn = r"D:\SteamLibrary\steamapps\junk\newned\_"+ soup.find("title").get_text().strip().replace(
+            " ", "").replace("|", "")[:20] + ".mp4"
+        filnamn = sub(r'[<>:"|?*] ', '', filnamn).replace("?", "")
         if not video_tags:
             video_tags = soup.find_all("src")
             if not video_tags:
@@ -84,35 +86,50 @@ def scrape_website(url):
                 # Extract the 'src' attribute from each video tag
                 video_source = video_tag.get("src")
                 if video_source and video_source[0] == "b":
-                    print("blob link")
+                    print("Laddar ned bloblink")
                     m3u8_link = find_m3u8(logs)
                     convertToMp4(m3u8_link, filnamn)
+                    os.startfile(os.path.dirname(filnamn))
                     break
-                print("Hämtat soppa")
+
 
                 if video_source:
                     print(f"Video {index} source:", video_source)
 
-                    pyperclip.copy(video_source)
-                    download_file(video_source)
+
+                    download_file(video_source,filnamn)
+                    os.startfile(os.path.dirname(filnamn))
 
                 else:
-                    print(f"Video {index} source attribute not found.")
+                    video_source= video_tag.find("source").get("src")
+                    if video_source and video_source[0] == "b":
+                        print("blob link")
+                        m3u8_link = find_m3u8(logs)
+                        convertToMp4(m3u8_link, filnamn)
+                        os.startfile(os.path.dirname(filnamn))
+                        break
+
+
+                    if video_source:
+                        print(f"Video {index} source:", video_source)
+
+                        download_file(video_source, filnamn)
+                        os.startfile(os.path.dirname(filnamn))
+
 
             return
 
     finally:
         driver.quit()
 
-def download_file(url):
-    destination = str(time.time())
-    response = requests.get(url, stream=True)
+def download_file(url,filnamn):
 
+    response = requests.get(url, stream=True)
     if response.status_code == 200:
-        with open(destination, 'wb') as file:
+        with open(filnamn, 'wb') as file:
             for chunk in response.iter_content(1024):
                 file.write(chunk)
-        print(f"File successfully downloaded: {destination}")
+        print(f"File successfully downloaded: {filnamn}")
     else:
         print(f"Failed to download file. Status code: {response.status_code}")
 
@@ -121,8 +138,8 @@ def convertToMp4(link, filnamn):
     if link is None:
         return
 
-    command = f'ffmpeg -i "{link}" -bsf:a aac_adtstoasc -vcodec copy -c copy -crf 50 {filnamn}.mp4'
-
+    command = f'ffmpeg -i "{link}" -bsf:a aac_adtstoasc -vcodec copy -c copy -crf 50 {filnamn}'
+    print(command)
     # Get the current script directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(script_dir)
@@ -145,8 +162,10 @@ def convertToMp4(link, filnamn):
 
 # Example usage
 if __name__ == "__main__":
-
-    url_to_scrape = input("link: ")  # Replace with the target URL
+    if len(argv) < 2:
+        url_to_scrape = input("link: ")  # Replace with the target URL
+    else:
+        url_to_scrape = argv[1]
   # // m3eu = scrape_website(url_to_scrape)
     #if m3eu != None:
     scrape_website(url_to_scrape)
